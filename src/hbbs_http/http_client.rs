@@ -12,11 +12,50 @@ use hbb_common::{
 };
 use reqwest::{blocking::Client as SyncClient, Client as AsyncClient};
 
+/// Local-only build: a resolver that refuses every host name, so no HTTP request can trigger
+/// a DNS query.
+struct DenyDnsResolver;
+
+impl reqwest::dns::Resolve for DenyDnsResolver {
+    fn resolve(&self, name: reqwest::dns::Name) -> reqwest::dns::Resolving {
+        let name = name.as_str().to_owned();
+        Box::pin(async move {
+            log::warn!("net_guard: blocked DNS lookup for {}", name);
+            Err(format!("DNS lookups are disabled (local-only build): {name}").into())
+        })
+    }
+}
+
+/// Local-only build: requests to an IP literal outside the local ranges are routed to a proxy
+/// whose host name `DenyDnsResolver` refuses, so they fail before any packet is sent.
+fn local_only_proxy() -> reqwest::Proxy {
+    reqwest::Proxy::custom(|url| {
+        let host = url
+            .host_str()
+            .unwrap_or("")
+            .trim_matches(|c| c == '[' || c == ']');
+        let is_local = match host.parse::<std::net::IpAddr>() {
+            Ok(ip) => hbb_common::net_guard::is_local_ip(&ip),
+            // Host names never resolve (see DenyDnsResolver).
+            Err(_) => true,
+        };
+        if is_local {
+            None
+        } else {
+            log::warn!("net_guard: blocked HTTP request to {}", url);
+            Some("http://blocked.invalid")
+        }
+    })
+}
+
 macro_rules! configure_http_client {
     ($builder:expr, $tls_type:expr, $danger_accept_invalid_cert:expr, $Client: ty) => {{
         // https://github.com/rustdesk/rustdesk/issues/11569
         // https://docs.rs/reqwest/latest/reqwest/struct.ClientBuilder.html#method.no_proxy
-        let mut builder = $builder.no_proxy();
+        let mut builder = $builder
+            .no_proxy()
+            .dns_resolver(std::sync::Arc::new(DenyDnsResolver))
+            .proxy(local_only_proxy());
 
         match $tls_type {
             TlsType::Plain => {}
@@ -88,9 +127,9 @@ macro_rules! configure_http_client {
                 }
             }
         } else {
+            // Local-only build: never fall back to an unguarded default client.
             builder.build().unwrap_or_else(|e| {
-                info!("Failed to create a client: {}", e);
-                <$Client>::new()
+                panic!("Failed to create a guarded HTTP client: {}", e);
             })
         };
 

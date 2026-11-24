@@ -194,7 +194,7 @@ async fn run_controlled_channel(
 ) {
     let mut pending: Vec<Bytes> = Vec::new();
     let mut pending_len = 0usize;
-    let connect = timeout(CONNECT_TIMEOUT_MS, TcpStream::connect(&addr));
+    let connect = timeout(CONNECT_TIMEOUT_MS, crate::common::connect_local_tcp(&addr));
     tokio::pin!(connect);
     let socket = loop {
         tokio::select! {

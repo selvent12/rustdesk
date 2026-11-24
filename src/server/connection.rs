@@ -1850,7 +1850,7 @@ impl Connection {
         let mut pf = pf.clone();
         let (mut addr, is_rdp) = Self::normalize_port_forward_target(&mut pf);
         self.port_forward_address = addr.clone();
-        match timeout(3000, TcpStream::connect(&addr)).await {
+        match timeout(3000, crate::common::connect_local_tcp(&addr)).await {
             Ok(Ok(sock)) => {
                 self.port_forward_socket = Some(Framed::new(sock, BytesCodec::new()));
                 true

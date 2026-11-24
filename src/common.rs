@@ -702,6 +702,10 @@ impl Drop for CheckTestNatType {
 }
 
 pub fn test_nat_type() {
+    // Local-only build: NAT detection needs the rendezvous server; never run it.
+    if true {
+        return;
+    }
     test_ipv6_sync();
     use std::sync::atomic::{AtomicBool, Ordering};
     std::thread::spawn(move || {
@@ -852,6 +856,7 @@ pub async fn get_nat_type(ms_timeout: u64) -> i32 {
 // used for client to test which server is faster in case stop-servic=Y
 #[tokio::main(flavor = "current_thread")]
 async fn test_rendezvous_server_() {
+    // Local-only build: get_rendezvous_servers() is always empty, so this returns at once.
     let servers = Config::get_rendezvous_servers();
     if servers.len() <= 1 {
         return;
@@ -1066,7 +1071,25 @@ pub fn is_modifier(evt: &KeyEvent) -> bool {
     }
 }
 
+/// Local-only build: TCP connect for host-initiated connections (port forwarding), limited to
+/// local IP addresses. "localhost" is mapped to 127.0.0.1; any other host name is refused
+/// without a DNS lookup.
+pub async fn connect_local_tcp(addr: &str) -> std::io::Result<hbb_common::tokio::net::TcpStream> {
+    let addr = match addr.strip_prefix("localhost:") {
+        Some(port) => format!("127.0.0.1:{port}"),
+        None => addr.to_owned(),
+    };
+    let target = hbb_common::net_guard::check_target(&addr).map_err(|e| {
+        std::io::Error::new(std::io::ErrorKind::PermissionDenied, e.to_string())
+    })?;
+    hbb_common::tokio::net::TcpStream::connect(target).await
+}
+
 pub fn check_software_update() {
+    // Local-only build: never check for updates.
+    if true {
+        return;
+    }
     if is_custom_client() {
         return;
     }
@@ -1294,6 +1317,11 @@ pub fn get_api_server(api: String, custom: String) -> String {
 }
 
 fn get_api_server_(api: String, custom: String) -> String {
+    // Local-only build: there is no API server (login, address book, heartbeat, audit).
+    if true {
+        let _ = (api, custom);
+        return String::new();
+    }
     #[cfg(windows)]
     if let Ok(lic) = crate::platform::windows::get_license_from_exe_name() {
         if !lic.api.is_empty() {
@@ -2809,6 +2837,10 @@ async fn test_bind_ipv6() -> ResultType<SocketAddr> {
 }
 
 pub async fn test_ipv6() -> Option<tokio::task::JoinHandle<()>> {
+    // Local-only build: public IPv6 discovery probes public addresses and STUN servers.
+    if true {
+        return None;
+    }
     {
         // One look and one claim of the minute, under one lock: two connections arriving
         // together would otherwise both find it over and both probe.
