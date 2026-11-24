@@ -1479,6 +1479,14 @@ async fn direct_server(server: ServerPtr) {
                 continue;
             }
             if let Ok(Ok((stream, addr))) = hbb_common::timeout(1000, l.accept()).await {
+                // Local-only build: accept only private / loopback peers, enforced in code so it
+                // cannot be cleared from the UI. Anything else is closed at once and logged.
+                // (The user-configurable `whitelist` option still applies on top of this.)
+                if !hbb_common::net_guard::is_local_ip(&addr.ip()) {
+                    log::warn!("net_guard: rejected direct access from non-local address {}", addr);
+                    drop(stream);
+                    continue;
+                }
                 stream.set_nodelay(true).ok();
                 log::info!("direct access from {}", addr);
                 let local_addr = stream

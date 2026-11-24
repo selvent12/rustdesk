@@ -32,6 +32,10 @@ pub(super) fn start_listening() -> ResultType<()> {
     loop {
         let mut buf = [0; 2048];
         if let Ok((len, addr)) = socket.recv_from(&mut buf) {
+            // Local-only build: ignore (and never answer) non-local senders.
+            if !hbb_common::net_guard::is_local_ip(&addr.ip()) {
+                continue;
+            }
             if let Ok(msg_in) = Message::parse_from_bytes(&buf[0..len]) {
                 match msg_in.union {
                     Some(rendezvous_message::Union::PeerDiscovery(p)) => {
@@ -236,6 +240,10 @@ fn wait_response(
     loop {
         let mut buf = [0; 2048];
         if let Ok((len, addr)) = socket.recv_from(&mut buf) {
+            // Local-only build: ignore (and never answer) non-local senders.
+            if !hbb_common::net_guard::is_local_ip(&addr.ip()) {
+                continue;
+            }
             if let Ok(msg_in) = Message::parse_from_bytes(&buf[0..len]) {
                 match msg_in.union {
                     Some(rendezvous_message::Union::PeerDiscovery(p)) => {
