@@ -1,11 +1,16 @@
-# Windows x64 (Flutter) build for the local-only (LAN/VPN) variant.
+# Build for the local-only (LAN/VPN) variant.
 #
-# Derived from the `build-for-windows-flutter` job in flutter-build.yml and from bridge.yml.
+# Layout: `generate-bridge` is platform-independent (runs on Ubuntu) and is shared by every
+# platform job. Currently only `build-windows-x64` exists; a Linux job (e.g. `build-linux-x64`,
+# derived from `build-rustdesk-linux` in flutter-build.yml) can be added next to it with
+# `needs: [generate-bridge]`.
+#
+# Windows job is derived from `build-for-windows-flutter` in flutter-build.yml.
 # Differences from upstream: x64 only, no signing, no MSI, no release publishing, no extra
 # driver downloads (usbmmidd virtual display, printer driver) and no TopMostWindow helper.
 # Output: GitHub Actions artifacts (the unpacked folder and a single self-extracting exe).
 
-name: Windows local-only build
+name: Local-only build
 
 on:
   workflow_dispatch:
@@ -17,7 +22,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: windows-local-${{ github.ref }}
+  group: local-build-${{ github.ref }}
   cancel-in-progress: true
 
 env:
