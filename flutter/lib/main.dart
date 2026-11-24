@@ -158,7 +158,12 @@ void runMainApp(bool startService) async {
     // Check the startup argument, if we successfully handle the argument, we keep the main window hidden.
     final handledByUniLinks = await initUniLinks();
     debugPrint("handled by uni links: $handledByUniLinks");
-    if (handledByUniLinks || handleUriLink(cmdArgs: kBootArgs)) {
+    // Local-only build (Windows, portable): start minimized to the tray once a permanent
+    // password is set (on first start the window stays visible for the set-password dialog).
+    // The tray icon's "Open" shows the window again.
+    final startInTray = isWindows &&
+        (await bind.mainGetCommon(key: "permanent-password-set")) == "true";
+    if (handledByUniLinks || handleUriLink(cmdArgs: kBootArgs) || startInTray) {
       windowManager.hide();
     } else {
       windowManager.show();

@@ -64,9 +64,11 @@ fn make_tray() -> hbb_common::ResultType<()> {
     let mut event_loop = EventLoopBuilder::new().build();
 
     let tray_menu = Menu::new();
-    let hide_stop_service = crate::ui_interface::get_builtin_option(
-        keys::OPTION_HIDE_STOP_SERVICE,
-    ) == "Y";
+    // Local-only build (portable): there is no service to stop; "Exit" quits the app instead.
+    let hide_stop_service = true;
+    let _ = keys::OPTION_HIDE_STOP_SERVICE;
+    #[cfg(windows)]
+    let exit_i = MenuItem::new(translate("Exit".to_owned()), true, None);
     // The tray icon is only shown when the service is running, so we don't need to check
     // the `stop-service` option here.
     let quit_i = if !hide_stop_service {
@@ -80,6 +82,8 @@ fn make_tray() -> hbb_common::ResultType<()> {
     } else {
         tray_menu.append_items(&[&open_i]).ok();
     }
+    #[cfg(windows)]
+    tray_menu.append_items(&[&exit_i]).ok();
     let tooltip = |count: usize| {
         if count == 0 {
             format!(
@@ -188,6 +192,17 @@ fn make_tray() -> hbb_common::ResultType<()> {
         }
 
         if let Ok(event) = menu_channel.try_recv() {
+            #[cfg(windows)]
+            if event.id == exit_i.id() {
+                let _ = _tray_icon
+                    .lock()
+                    .unwrap()
+                    .as_mut()
+                    .map(|t| t.set_visible(false));
+                exit_local_only_app();
+                *control_flow = ControlFlow::Exit;
+                return;
+            }
             if let Some(quit_i) = &quit_i {
                 if event.id == quit_i.id() {
                     /* failed in windows, seems no permission to check system process
@@ -296,6 +311,25 @@ async fn start_query_session_count(sender: std::sync::mpsc::Sender<Data>) {
         }
         hbb_common::sleep(1.).await;
     }
+}
+
+/// Local-only build (portable, Windows): ends every process of this app (main window with the
+/// server, connection manager, helpers), this tray included.
+#[cfg(windows)]
+fn exit_local_only_app() {
+    use std::os::windows::process::CommandExt;
+    let Some(name) = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()))
+    else {
+        return;
+    };
+    let me = std::process::id().to_string();
+    // Others first, then ourselves.
+    let _ = std::process::Command::new("taskkill")
+        .args(["/F", "/IM", &name, "/FI", &format!("PID ne {me}")])
+        .creation_flags(0x0800_0000) // CREATE_NO_WINDOW
+        .output();
 }
 
 fn load_icon_from_asset() -> Option<image::DynamicImage> {
