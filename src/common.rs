@@ -2547,23 +2547,55 @@ pub fn rustdesk_interval(i: Interval) -> ThrottledInterval {
     ThrottledInterval::new(i)
 }
 
-/// Local-only build: the device's own LAN IPv4 addresses (private ranges only, no loopback or
-/// link-local), shown in the UI instead of the RustDesk ID. Others connect to one of these.
+/// Local-only build: the device's own LAN IPv4 addresses, shown in the UI instead of the
+/// RustDesk ID. Others connect to one of these.
+///
+/// Only private addresses of interfaces that are up and have a default gateway are listed, so
+/// host-only virtual adapters (VMware, VirtualBox, Hyper-V, ...) are left out. If no interface
+/// has a gateway (e.g. an isolated LAN), all private addresses are listed instead.
+/// The result is cached for a few seconds: reading the gateway issues a (LAN-only) ARP request
+/// on Windows, which can block, and the UI asks for this on every repaint.
 pub fn get_local_ipv4s() -> Vec<String> {
-    let mut ips: Vec<String> = Vec::new();
+    use std::sync::Mutex;
+    lazy_static::lazy_static! {
+        static ref CACHE: Mutex<Option<(Instant, Vec<String>)>> = Mutex::new(None);
+    }
+    if let Some((t, ips)) = CACHE.lock().unwrap().as_ref() {
+        if t.elapsed() < Duration::from_secs(10) {
+            return ips.clone();
+        }
+    }
+    let ips = get_local_ipv4s_();
+    *CACHE.lock().unwrap() = Some((Instant::now(), ips.clone()));
+    ips
+}
+
+fn get_local_ipv4s_() -> Vec<String> {
+    let mut with_gateway: Vec<String> = Vec::new();
+    let mut all: Vec<String> = Vec::new();
     #[cfg(not(target_os = "ios"))]
     for interface in default_net::get_interfaces() {
+        if !interface.is_up() || interface.is_loopback() {
+            continue;
+        }
         for v4 in &interface.ipv4 {
-            let ip = v4.addr;
-            if ip.is_private() {
-                let s = ip.to_string();
-                if !ips.contains(&s) {
-                    ips.push(s);
-                }
+            if !v4.addr.is_private() {
+                continue;
+            }
+            let s = v4.addr.to_string();
+            if interface.gateway.is_some() && !with_gateway.contains(&s) {
+                with_gateway.push(s.clone());
+            }
+            if !all.contains(&s) {
+                all.push(s);
             }
         }
     }
-    ips
+    if with_gateway.is_empty() {
+        all
+    } else {
+        with_gateway
+    }
 }
 
 /// Local-only build: fixed settings that hide or switch off everything that needs the

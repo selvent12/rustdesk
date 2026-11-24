@@ -521,9 +521,14 @@ class ServerInfo extends StatelessWidget {
             ]),
             Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
               Flexible(
-                child: Text(
-                  bind.mainGetLocalIps(),
-                  style: textStyleValue,
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    bind.mainGetLocalIps(),
+                    maxLines: 1,
+                    style: textStyleValue,
+                  ),
                 ),
               ),
               IconButton(

@@ -189,8 +189,7 @@ class _DesktopHomePageState extends State<DesktopHomePage>
   // other devices connect to one of these.
   buildIDBoard(BuildContext context) {
     final localIps = bind.mainGetLocalIps();
-    final ipController = TextEditingController(
-        text: localIps.isEmpty ? translate("No network") : localIps);
+    final ipText = localIps.isEmpty ? translate("No network") : localIps;
     return Container(
       margin: const EdgeInsets.only(left: 20, right: 11),
       height: 57,
@@ -231,21 +230,19 @@ class _DesktopHomePageState extends State<DesktopHomePage>
                   Flexible(
                     child: GestureDetector(
                       onDoubleTap: () {
-                        Clipboard.setData(
-                            ClipboardData(text: ipController.text));
+                        Clipboard.setData(ClipboardData(text: localIps));
                         showToast(translate("Copied"));
                       },
-                      child: TextFormField(
-                        controller: ipController,
-                        readOnly: true,
-                        decoration: InputDecoration(
-                          border: InputBorder.none,
-                          contentPadding: EdgeInsets.only(top: 10, bottom: 10),
+                      // Scales down instead of being cut when there are several addresses.
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          ipText,
+                          maxLines: 1,
+                          style: TextStyle(fontSize: 22),
                         ),
-                        style: TextStyle(
-                          fontSize: 22,
-                        ),
-                      ).workaroundFreezeLinuxMint(),
+                      ).marginOnly(top: 6),
                     ),
                   )
                 ],
