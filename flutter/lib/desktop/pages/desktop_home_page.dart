@@ -185,8 +185,12 @@ class _DesktopHomePageState extends State<DesktopHomePage>
     );
   }
 
+  // Local-only build: shows this device's LAN IP address(es) instead of the RustDesk ID;
+  // other devices connect to one of these.
   buildIDBoard(BuildContext context) {
-    final model = gFFI.serverModel;
+    final localIps = bind.mainGetLocalIps();
+    final ipController = TextEditingController(
+        text: localIps.isEmpty ? translate("No network") : localIps);
     return Container(
       margin: const EdgeInsets.only(left: 20, right: 11),
       height: 57,
@@ -211,7 +215,7 @@ class _DesktopHomePageState extends State<DesktopHomePage>
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          translate("ID"),
+                          "IP",
                           style: TextStyle(
                               fontSize: 14,
                               color: Theme.of(context)
@@ -228,11 +232,11 @@ class _DesktopHomePageState extends State<DesktopHomePage>
                     child: GestureDetector(
                       onDoubleTap: () {
                         Clipboard.setData(
-                            ClipboardData(text: model.serverId.text));
+                            ClipboardData(text: ipController.text));
                         showToast(translate("Copied"));
                       },
                       child: TextFormField(
-                        controller: model.serverId,
+                        controller: ipController,
                         readOnly: true,
                         decoration: InputDecoration(
                           border: InputBorder.none,

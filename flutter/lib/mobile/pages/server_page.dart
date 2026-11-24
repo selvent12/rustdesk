@@ -513,21 +513,24 @@ class ServerInfo extends StatelessWidget {
               const Icon(Icons.perm_identity,
                       color: Colors.grey, size: iconSize)
                   .marginOnly(right: iconMarginRight),
+              // Local-only build: LAN IP address(es) instead of the RustDesk ID.
               Text(
-                translate('ID'),
+                "IP",
                 style: textStyleHeading,
               )
             ]),
             Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-              Text(
-                model.serverId.value.text,
-                style: textStyleValue,
+              Flexible(
+                child: Text(
+                  bind.mainGetLocalIps(),
+                  style: textStyleValue,
+                ),
               ),
               IconButton(
                   visualDensity: VisualDensity.compact,
                   icon: Icon(Icons.copy_outlined),
                   onPressed: () {
-                    copyToClipboard(model.serverId.value.text.trim());
+                    copyToClipboard(bind.mainGetLocalIps().trim());
                   })
             ]).marginOnly(left: 39, bottom: 10),
             // Password

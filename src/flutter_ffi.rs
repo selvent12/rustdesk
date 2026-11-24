@@ -1202,6 +1202,11 @@ pub fn main_check_connect_status() {
     start_option_status_sync(); // avoid multi calls
 }
 
+/// Local-only build: comma-separated LAN IPv4 addresses of this device (replaces the ID in the UI).
+pub fn main_get_local_ips() -> SyncReturn<String> {
+    SyncReturn(crate::common::get_local_ipv4s().join(", "))
+}
+
 pub fn main_is_using_public_server() -> bool {
     crate::using_public_server()
 }

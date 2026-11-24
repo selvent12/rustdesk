@@ -2547,6 +2547,25 @@ pub fn rustdesk_interval(i: Interval) -> ThrottledInterval {
     ThrottledInterval::new(i)
 }
 
+/// Local-only build: the device's own LAN IPv4 addresses (private ranges only, no loopback or
+/// link-local), shown in the UI instead of the RustDesk ID. Others connect to one of these.
+pub fn get_local_ipv4s() -> Vec<String> {
+    let mut ips: Vec<String> = Vec::new();
+    #[cfg(not(target_os = "ios"))]
+    for interface in default_net::get_interfaces() {
+        for v4 in &interface.ipv4 {
+            let ip = v4.addr;
+            if ip.is_private() {
+                let s = ip.to_string();
+                if !ips.contains(&s) {
+                    ips.push(s);
+                }
+            }
+        }
+    }
+    ips
+}
+
 /// Local-only build: fixed settings that hide or switch off everything that needs the
 /// internet (account/login, address book, server/proxy/websocket settings, installation,
 /// update checks, help cards). Applied after any custom client config so nothing can undo them.
@@ -2564,6 +2583,8 @@ pub fn apply_local_only_settings() {
             keys::OPTION_HIDE_PROXY_SETTINGS,
             keys::OPTION_HIDE_WEBSOCKET_SETTINGS,
             keys::OPTION_HIDE_HELP_CARDS,
+            // The ID is not used (connections are by IP), so it cannot be changed either.
+            "disable-change-id",
         ] {
             builtin.insert(k.to_owned(), "Y".to_owned());
         }
