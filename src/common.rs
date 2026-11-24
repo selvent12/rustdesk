@@ -2629,6 +2629,16 @@ pub fn apply_local_only_settings() {
         .write()
         .unwrap()
         .insert(keys::OPTION_ALLOW_AUTO_UPDATE.to_owned(), "N".to_owned());
+    // Direct IP access is the only way to connect, so it is on by default (still switchable).
+    // The port defaults to 21118 (RENDEZVOUS_PORT + 2) and stays configurable.
+    {
+        let mut defaults = config::DEFAULT_SETTINGS.write().unwrap();
+        defaults.insert(config::keys::OPTION_DIRECT_SERVER.to_owned(), "Y".to_owned());
+        defaults.insert(
+            keys::OPTION_DIRECT_ACCESS_PORT.to_owned(),
+            (config::RENDEZVOUS_PORT + 2).to_string(),
+        );
+    }
 }
 
 pub fn load_custom_client() {
