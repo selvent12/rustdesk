@@ -992,11 +992,9 @@ async fn handle(data: Data, stream: &mut Connection) {
                 } else if name == "rendezvous_servers" {
                     value = Some(Config::get_rendezvous_servers().join(","));
                 } else if name == "fingerprint" {
-                    value = if Config::get_key_confirmed() {
-                        Some(crate::common::pk_to_fingerprint(Config::get_key_pair().1))
-                    } else {
-                        None
-                    };
+                    // Local-only build: the key is never "confirmed" by a rendezvous server;
+                    // the host's own signing key is its identity, so always report it.
+                    value = Some(crate::common::pk_to_fingerprint(Config::get_key_pair().1));
                 } else if name == "hide_cm" {
                     value = if crate::hbbs_http::sync::is_pro() || crate::common::is_custom_client()
                     {
@@ -1867,6 +1865,9 @@ pub fn set_permanent_password(v: String) -> ResultType<()> {
 
 #[tokio::main(flavor = "current_thread")]
 pub async fn set_permanent_password_with_ack(v: String) -> ResultType<bool> {
+    if !crate::common::is_valid_local_only_password(&v) {
+        bail!("The password must have at least 8 characters (local-only build)");
+    }
     set_permanent_password_with_ack_async(v).await
 }
 

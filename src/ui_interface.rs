@@ -690,6 +690,10 @@ pub fn set_permanent_password_with_result(password: String) -> bool {
     if config::Config::is_disable_change_permanent_password() {
         return false;
     }
+    if !crate::common::is_valid_local_only_password(&password) {
+        log::warn!("Password change rejected: at least 8 characters required (local-only build)");
+        return false;
+    }
     #[cfg(any(target_os = "android", target_os = "ios"))]
     {
         return match crate::trusted_devices::config::set_password(&password) {
@@ -1367,12 +1371,9 @@ pub fn get_user_default_option(key: String) -> String {
 }
 
 pub fn get_fingerprint() -> String {
+    // Local-only build: no rendezvous server confirms the key; always report it.
     #[cfg(any(target_os = "android", target_os = "ios"))]
-    if Config::get_key_confirmed() {
-        return crate::common::pk_to_fingerprint(Config::get_key_pair().1);
-    } else {
-        return "".to_owned();
-    }
+    return crate::common::pk_to_fingerprint(Config::get_key_pair().1);
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     return ipc::get_fingerprint();
 }

@@ -91,6 +91,7 @@ class _DesktopHomePageState extends State<DesktopHomePage>
       ),
       buildTip(context),
       if (!isOutgoingOnly) buildIDBoard(context),
+      if (!isOutgoingOnly) buildFingerprintBoard(context),
       if (!isOutgoingOnly) buildPasswordBoard(context),
       FutureBuilder<Widget>(
         future: Future.value(
@@ -182,6 +183,39 @@ class _DesktopHomePageState extends State<DesktopHomePage>
     return Container(
       color: Theme.of(context).scaffoldBackgroundColor,
       child: ConnectionPage(),
+    );
+  }
+
+  // Local-only build: this host's key fingerprint. A controller shows the same value on its
+  // first connection (TOFU) so the user can check it is really talking to this device.
+  Widget buildFingerprintBoard(BuildContext context) {
+    return FutureBuilder<String>(
+      future: bind.mainGetFingerprint(),
+      builder: (context, snapshot) {
+        final fp = snapshot.data ?? '';
+        if (fp.isEmpty) return Container();
+        return GestureDetector(
+          onDoubleTap: () {
+            Clipboard.setData(ClipboardData(text: fp));
+            showToast(translate("Copied"));
+          },
+          child: Container(
+            margin: const EdgeInsets.only(left: 29, right: 11, top: 2),
+            alignment: Alignment.centerLeft,
+            child: Text(
+              '${translate("Fingerprint")}:\n$fp',
+              style: TextStyle(
+                  fontSize: 11,
+                  fontFamily: 'monospace',
+                  color: Theme.of(context)
+                      .textTheme
+                      .titleLarge
+                      ?.color
+                      ?.withOpacity(0.6)),
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -717,6 +751,13 @@ class _DesktopHomePageState extends State<DesktopHomePage>
   @override
   void initState() {
     super.initState();
+    // Local-only build: the permanent password is the only way in; ask for it on first start.
+    Future.delayed(const Duration(seconds: 1), () async {
+      if (!mounted) return;
+      if ((await bind.mainGetCommon(key: "permanent-password-set")) != "true") {
+        setPasswordDialog();
+      }
+    });
     _updateTimer = periodic_immediate(const Duration(seconds: 1), () async {
       await gFFI.serverModel.fetchID();
       final error = await bind.mainGetError();

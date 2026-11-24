@@ -190,6 +190,13 @@ class _ServerPageState extends State<ServerPage> {
       await gFFI.serverModel.fetchID();
     });
     gFFI.serverModel.checkAndroidPermission();
+    // Local-only build: the permanent password is the only way in; ask for it on first start.
+    Future.delayed(const Duration(seconds: 1), () async {
+      if (!mounted) return;
+      if ((await bind.mainGetCommon(key: "permanent-password-set")) != "true") {
+        setPasswordDialog();
+      }
+    });
   }
 
   @override
@@ -538,6 +545,18 @@ class ServerInfo extends StatelessWidget {
                     copyToClipboard(bind.mainGetLocalIps().trim());
                   })
             ]).marginOnly(left: 39, bottom: 10),
+            // Local-only build: host key fingerprint, shown by the controller on first connection.
+            FutureBuilder<String>(
+              future: bind.mainGetFingerprint(),
+              builder: (context, snapshot) {
+                final fp = snapshot.data ?? '';
+                if (fp.isEmpty) return Container();
+                return Text(
+                  '${translate("Fingerprint")}:\n$fp',
+                  style: const TextStyle(fontSize: 11, fontFamily: 'monospace'),
+                ).marginOnly(left: 39, bottom: 10);
+              },
+            ),
             // Password
             Row(children: [
               const Icon(Icons.lock_outline, color: Colors.grey, size: iconSize)

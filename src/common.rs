@@ -2598,6 +2598,13 @@ fn get_local_ipv4s_() -> Vec<String> {
     }
 }
 
+/// Local-only build: the permanent password is the only way in, so it can be neither cleared
+/// nor shorter than 8 characters (the UI also asks for a digit, an upper- and a lower-case
+/// letter).
+pub fn is_valid_local_only_password(password: &str) -> bool {
+    password.trim().chars().count() >= 8
+}
+
 /// Local-only build: fixed settings that hide or switch off everything that needs the
 /// internet (account/login, address book, server/proxy/websocket settings, installation,
 /// update checks, help cards). Applied after any custom client config so nothing can undo them.
@@ -2629,6 +2636,11 @@ pub fn apply_local_only_settings() {
         .write()
         .unwrap()
         .insert(keys::OPTION_ALLOW_AUTO_UPDATE.to_owned(), "N".to_owned());
+    // Only the permanent password: no temporary / one-time password.
+    config::OVERWRITE_SETTINGS.write().unwrap().insert(
+        keys::OPTION_VERIFICATION_METHOD.to_owned(),
+        "use-permanent-password".to_owned(),
+    );
     // Direct IP access is the only way to connect, so it is on by default (still switchable).
     // The port defaults to 21118 (RENDEZVOUS_PORT + 2) and stays configurable.
     {
