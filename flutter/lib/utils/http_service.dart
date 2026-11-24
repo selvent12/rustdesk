@@ -17,16 +17,10 @@ class HttpService {
   }) async {
     headers ??= {'Content-Type': 'application/json'};
 
-    // Use Rust HTTP implementation for non-web platforms for consistency.
-    var useFlutterHttp = (isWeb || kIsWeb);
-    if (!useFlutterHttp) {
-      final enableFlutterHttpOnRust =
-          mainGetLocalBoolOptionSync(kOptionEnableFlutterHttpOnRust);
-      // Use flutter http if:
-      // Not `enableFlutterHttpOnRust` and no proxy is set
-      useFlutterHttp =
-          !(enableFlutterHttpOnRust || await bind.mainGetProxyStatus());
-    }
+    // Local-only build: on non-web platforms every request goes through the Rust HTTP
+    // client, which refuses DNS lookups and public addresses (net_guard). The Dart http
+    // client is never used there, so it cannot bypass that guard.
+    final useFlutterHttp = (isWeb || kIsWeb);
 
     if (useFlutterHttp) {
       return await _pollFlutterHttp(url, method, headers: headers, body: body);
