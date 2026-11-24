@@ -717,7 +717,12 @@ message PublicKey {
   uint32 kx_version = 3;
 }
 
-message SignedId { bytes id = 1; }
+message SignedId {
+  bytes id = 1;
+  // Local-only build: the host's own Ed25519 public key that signed `id`. With no rendezvous
+  // server to vouch for it, the controller pins it on first use (TOFU) and verifies `id` with it.
+  bytes sign_pk = 2;
+}
 
 message AudioFormat {
   uint32 sample_rate = 1;

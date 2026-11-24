@@ -1885,6 +1885,8 @@ pub fn main_device_name(name: String) {
 
 pub fn main_remove_peer(id: String) {
     PeerConfig::remove(&id);
+    // Local-only build: forgetting a host also forgets its pinned key (re-pinned on next use).
+    crate::client::unpin_host_key(&id);
 }
 
 pub fn main_has_hwcodec() -> SyncReturn<bool> {

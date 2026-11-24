@@ -438,15 +438,13 @@ impl Client {
         }
         // to-do: remember the port for each peer, so that we can retry easier
         if hbb_common::is_ip_str(peer) {
+            let mut conn =
+                connect_tcp_local(check_port(peer, RELAY_PORT + 1), None, CONNECT_TIMEOUT).await?;
+            // Local-only build: always encrypted; the host's signing key comes in-band and is
+            // pinned (TOFU) by the io loop.
+            let host_pk = Self::secure_connection_direct(&mut conn).await?;
             return Ok((
-                (
-                    connect_tcp_local(check_port(peer, RELAY_PORT + 1), None, CONNECT_TIMEOUT)
-                        .await?,
-                    true,
-                    None,
-                    None,
-                    "TCP",
-                ),
+                (conn, true, Some(host_pk), None, "TCP"),
                 (0, "".to_owned()),
                 false,
             ));
@@ -1653,6 +1651,52 @@ impl Client {
         }
         log::debug!("{} punch secure_connection ok", punch_type);
         Ok((conn, direct, pk, kcp, typ))
+    }
+
+    /// Local-only build: encrypted handshake for a direct-IP connection, with no rendezvous
+    /// server. The host sends `SignedId { id, sign_pk }`; `id` must verify under `sign_pk`
+    /// (proof the host holds that key). The key exchange then runs as upstream (X25519 box +
+    /// secretbox). Returns `sign_pk`, which the caller pins per host (TOFU). There is no
+    /// plaintext fallback: anything unexpected fails the connection.
+    async fn secure_connection_direct(conn: &mut Stream) -> ResultType<Vec<u8>> {
+        let bytes = match timeout(READ_TIMEOUT, conn.next()).await? {
+            Some(res) => res?,
+            None => bail!("Reset by the peer"),
+        };
+        let msg_in = Message::parse_from_bytes(&bytes)
+            .map_err(|_| anyhow!("Handshake failed: invalid message format"))?;
+        let Some(message::Union::SignedId(si)) = msg_in.union else {
+            bail!("Handshake failed: the host did not offer encryption");
+        };
+        if si.sign_pk.len() != sign::PUBLICKEYBYTES {
+            bail!("Handshake failed: the host sent no signing key");
+        }
+        let mut pk_arr = [0u8; sign::PUBLICKEYBYTES];
+        pk_arr.copy_from_slice(&si.sign_pk);
+        let sign_pk = sign::PublicKey(pk_arr);
+        let (_id, their_pk_b, _fp, kx_version) = decode_id_pk_dtls(&si.id, &sign_pk)
+            .map_err(|e| anyhow!("Handshake failed: host signature invalid: {}", e))?;
+        let (asymmetric_value, symmetric_value, key) = create_symmetric_key_msg(their_pk_b);
+        let picked = hbb_common::tcp::kx_version_for(kx_version);
+        let mut msg_out = Message::new();
+        msg_out.set_public_key(PublicKey {
+            asymmetric_value: asymmetric_value.clone(),
+            symmetric_value,
+            kx_version: picked,
+            ..Default::default()
+        });
+        timeout(CONNECT_TIMEOUT, conn.send(&msg_out)).await??;
+        conn.set_negotiated_key(
+            key,
+            true,
+            &hbb_common::tcp::KxTranscript {
+                initiator_pk: &asymmetric_value,
+                responder_pk: &their_pk_b,
+                advertised: kx_version,
+                picked,
+            },
+        )?;
+        Ok(si.sign_pk.to_vec())
     }
 
     /// Establish secure connection with the server.
@@ -5069,6 +5113,86 @@ pub enum Data {
     ResetDecoder(Option<usize>),
     RenameFile((i32, String, String, bool)),
     TakeScreenshot((i32, String)),
+}
+
+/// Local-only build: trust-on-first-use pinning of host signing keys.
+///
+/// Pins are kept in the local option `local-only-host-keys` as a JSON map
+/// `{ "<peer id / IP>": "<hex sign_pk>" }`, apart from PeerConfig so a session saving its own
+/// config can never overwrite them.
+pub enum HostKeyCheck {
+    Known,
+    New,
+    Changed(Vec<u8>),
+}
+
+const OPTION_HOST_KEYS: &str = "local-only-host-keys";
+
+fn load_host_keys() -> HashMap<String, String> {
+    serde_json::from_str(&LocalConfig::get_option(OPTION_HOST_KEYS)).unwrap_or_default()
+}
+
+pub fn check_host_key(id: &str, pk: &[u8]) -> HostKeyCheck {
+    match load_host_keys().get(id) {
+        None => HostKeyCheck::New,
+        Some(hex) => {
+            let pinned: Vec<u8> = (0..hex.len() / 2)
+                .filter_map(|i| u8::from_str_radix(hex.get(i * 2..i * 2 + 2)?, 16).ok())
+                .collect();
+            if pinned == pk {
+                HostKeyCheck::Known
+            } else {
+                HostKeyCheck::Changed(pinned)
+            }
+        }
+    }
+}
+
+pub fn pin_host_key(id: &str, pk: &[u8]) {
+    let mut keys = load_host_keys();
+    keys.insert(
+        id.to_owned(),
+        pk.iter().map(|b| format!("{:02x}", b)).collect(),
+    );
+    if let Ok(s) = serde_json::to_string(&keys) {
+        LocalConfig::set_option(OPTION_HOST_KEYS.to_owned(), s);
+    }
+}
+
+pub fn unpin_host_key(id: &str) {
+    let mut keys = load_host_keys();
+    if keys.remove(id).is_some() {
+        if let Ok(s) = serde_json::to_string(&keys) {
+            LocalConfig::set_option(OPTION_HOST_KEYS.to_owned(), s);
+        }
+    }
+}
+
+/// Asks the user to compare the fingerprint with the one shown on the host before the first
+/// connection to it. Returns true when the user chose to continue.
+pub async fn confirm_new_host_key(
+    interface: &impl Interface,
+    receiver: &mut UnboundedReceiver<Data>,
+    fingerprint: &str,
+) -> bool {
+    interface.msgbox(
+        "insecure-connection-nocancel-hasclose",
+        "New host",
+        &format!(
+            "First connection to this host. Check that this fingerprint matches the one shown on the host before continuing:\n\n{}",
+            fingerprint
+        ),
+        "",
+    );
+    while let Some(data) = receiver.recv().await {
+        match data {
+            Data::ContinueInsecureConnection => return true,
+            Data::RejectInsecureConnection => return false,
+            Data::Close => return false,
+            _ => {}
+        }
+    }
+    false
 }
 
 pub async fn confirm_insecure_connection(

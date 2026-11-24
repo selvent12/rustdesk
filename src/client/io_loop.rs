@@ -237,6 +237,52 @@ impl<T: InvokeUiSession> Remote<T> {
                 };
                 self.handler
                     .set_connection_type(is_secured, direct, stream_type); // flutter -> connection_ready
+                // Local-only build: an unencrypted session is never allowed.
+                if !is_secured {
+                    self.handler.on_error(
+                        "The connection is not encrypted; this build refuses unencrypted sessions.",
+                    );
+                    self.send_close_reason(&mut peer, "").await;
+                    self.handle_disconnected(round);
+                    return;
+                }
+                // Local-only build: trust on first use of the host's signing key.
+                {
+                    let id = self.handler.get_id();
+                    let host_pk = pk.clone().unwrap_or_default();
+                    let fp = crate::common::pk_to_fingerprint(host_pk.clone());
+                    match client::check_host_key(&id, &host_pk) {
+                        client::HostKeyCheck::Known => {}
+                        client::HostKeyCheck::New => {
+                            if client::confirm_new_host_key(&self.handler, &mut self.receiver, &fp)
+                                .await
+                            {
+                                client::pin_host_key(&id, &host_pk);
+                                log::info!("Pinned host key of {}: {}", id, fp);
+                            } else {
+                                self.send_close_reason(&mut peer, "").await;
+                                self.handle_disconnected(round);
+                                return;
+                            }
+                        }
+                        client::HostKeyCheck::Changed(old) => {
+                            log::warn!("Host key of {} changed! pinned {:?}, got {}", id, old, fp);
+                            self.handler.msgbox(
+                                "error",
+                                "Host key changed",
+                                &format!(
+                                    "WARNING: the identity of this host has changed. Someone may be impersonating it, or the host was reinstalled.\n\nPinned:\n{}\n\nNow:\n{}\n\nThe connection was blocked. If the change is expected, remove this host from the recent list to trust the new key.",
+                                    crate::common::pk_to_fingerprint(old),
+                                    fp
+                                ),
+                                "",
+                            );
+                            self.send_close_reason(&mut peer, "").await;
+                            self.handle_disconnected(round);
+                            return;
+                        }
+                    }
+                }
                 if !is_secured
                     && !crate::common::is_direct_ip_access(&self.handler.get_id())
                     && !client::confirm_insecure_connection(&self.handler, &mut self.receiver).await

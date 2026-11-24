@@ -262,7 +262,13 @@ pub async fn create_tcp_connection(
 /// Our signed identity goes out and, when `secure`, the controller's reply keys `stream`.
 /// Separate so it can be raced against the connection's eviction.
 async fn identity_handshake(stream: &mut Stream, secure: bool) -> ResultType<()> {
+    // Local-only build: every connection is encrypted, there is no plaintext fallback.
+    let _ = secure;
+    let secure = true;
     let (sk, pk) = Config::get_key_pair();
+    if !(pk.len() == sign::PUBLICKEYBYTES && sk.len() == sign::SECRETKEYBYTES) {
+        bail!("Handshake failed: host key pair unavailable (local-only build requires encryption)");
+    }
     if secure && pk.len() == sign::PUBLICKEYBYTES && sk.len() == sign::SECRETKEYBYTES {
         let mut sk_ = [0u8; sign::SECRETKEYBYTES];
         sk_[..].copy_from_slice(&sk);
@@ -300,6 +306,8 @@ async fn identity_handshake(stream: &mut Stream, secure: bool) -> ResultType<()>
                 &sk,
             )
             .into(),
+            // Local-only build: our signing key, pinned by the controller on first use (TOFU).
+            sign_pk: pk.clone().into(),
             ..Default::default()
         });
         timeout(CONNECT_TIMEOUT, stream.send(&msg_out)).await??;
@@ -332,13 +340,14 @@ async fn identity_handshake(stream: &mut Stream, secure: bool) -> ResultType<()>
                                 },
                             )?;
                         } else if pk.asymmetric_value.is_empty() {
-                            Config::set_key_confirmed(false);
-                            log::info!("Force to update pk");
+                            // Local-only build: the controller declined encryption; refuse.
+                            bail!("Handshake failed: controller did not negotiate encryption");
                         } else {
                             bail!("Handshake failed: invalid public sign key length from peer");
                         }
                     } else {
-                        log::error!("Handshake failed: invalid message type");
+                        // Local-only build: no key exchange means no encryption; refuse.
+                        bail!("Handshake failed: invalid message type (encryption required)");
                     }
                 } else {
                     bail!("Handshake failed: invalid message format");
