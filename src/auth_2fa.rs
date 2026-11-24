@@ -156,6 +156,11 @@ impl TelegramBot {
 
 // https://gist.github.com/dideler/85de4d64f66c1966788c1b2304b9caf1
 pub async fn send_2fa_code_to_telegram(text: &str, bot: TelegramBot) -> ResultType<()> {
+    // Local-only build: Telegram is an internet service.
+    if true {
+        let _ = (text, bot);
+        bail!("Telegram is disabled (local-only build)");
+    }
     let url = format!("https://api.telegram.org/bot{}/sendMessage", bot.token_str);
     let params = serde_json::json!({"chat_id": bot.chat_id, "text": text});
     crate::post_request(url, params.to_string(), "").await?;
@@ -163,6 +168,11 @@ pub async fn send_2fa_code_to_telegram(text: &str, bot: TelegramBot) -> ResultTy
 }
 
 pub fn get_chatid_telegram(bot_token: &str) -> ResultType<Option<String>> {
+    // Local-only build: Telegram is an internet service.
+    if true {
+        let _ = bot_token;
+        bail!("Telegram is disabled (local-only build)");
+    }
     let url = format!("https://api.telegram.org/bot{}/getUpdates", bot_token);
     // because caller is in tokio runtime, so we must call post_request_sync in new thread.
     let handle = std::thread::spawn(move || crate::post_request_sync(url, "".to_owned(), ""));

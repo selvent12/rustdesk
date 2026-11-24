@@ -312,6 +312,37 @@ impl RendezvousMediator {
     }
 
     pub async fn start_all() {
+        // Local-only build: no rendezvous server, NAT test, HTTP sync or auto-update.
+        // Only the direct-IP server (and LAN discovery, when enabled) runs.
+        if true {
+            if config::is_outgoing_only() {
+                loop {
+                    sleep(1.).await;
+                }
+            }
+            check_zombie();
+            let server = new_server();
+            let server_cloned = server.clone();
+            tokio::spawn(async move {
+                direct_server(server_cloned).await;
+            });
+            #[cfg(target_os = "android")]
+            let start_lan_listening = true;
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
+            let start_lan_listening = crate::platform::is_installed();
+            if start_lan_listening {
+                std::thread::spawn(move || {
+                    allow_err!(super::lan::start_listening());
+                });
+            }
+            scrap::codec::test_av1();
+            loop {
+                if option2bool("stop-service", &Config::get_option("stop-service")) {
+                    server.write().unwrap().close_connections();
+                }
+                sleep(1.).await;
+            }
+        }
         crate::test_nat_type();
         if config::is_outgoing_only() {
             loop {

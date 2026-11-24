@@ -466,6 +466,10 @@ impl Client {
             ));
         }
 
+        // Local-only build: there is no rendezvous server to look up an ID.
+        if true {
+            bail!("Local-only build: connect using the IP address of the remote device (e.g. 192.168.1.20).");
+        }
         let other_server = interface.get_lch().read().unwrap().other_server.clone();
         let (peer, other_server, key, token) = if let Some((a, b, c)) = other_server.as_ref() {
             (a.as_ref(), b.as_ref(), c.as_ref(), "")
