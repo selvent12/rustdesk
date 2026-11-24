@@ -2494,6 +2494,10 @@ pub fn create_symmetric_key_msg(their_pk_b: [u8; 32]) -> (Bytes, Bytes, secretbo
 
 #[inline]
 pub fn using_public_server() -> bool {
+    // Local-only build: the public server is never used.
+    if true {
+        return false;
+    }
     crate::get_custom_rendezvous_server(get_option("custom-rendezvous-server")).is_empty()
 }
 
@@ -2543,7 +2547,43 @@ pub fn rustdesk_interval(i: Interval) -> ThrottledInterval {
     ThrottledInterval::new(i)
 }
 
+/// Local-only build: fixed settings that hide or switch off everything that needs the
+/// internet (account/login, address book, server/proxy/websocket settings, installation,
+/// update checks, help cards). Applied after any custom client config so nothing can undo them.
+pub fn apply_local_only_settings() {
+    {
+        let mut hard = config::HARD_SETTINGS.write().unwrap();
+        for k in ["disable-ab", "disable-account", "disable-installation"] {
+            hard.insert(k.to_owned(), "Y".to_owned());
+        }
+    }
+    {
+        let mut builtin = config::BUILTIN_SETTINGS.write().unwrap();
+        for k in [
+            keys::OPTION_HIDE_SERVER_SETTINGS,
+            keys::OPTION_HIDE_PROXY_SETTINGS,
+            keys::OPTION_HIDE_WEBSOCKET_SETTINGS,
+            keys::OPTION_HIDE_HELP_CARDS,
+        ] {
+            builtin.insert(k.to_owned(), "Y".to_owned());
+        }
+    }
+    config::OVERWRITE_LOCAL_SETTINGS
+        .write()
+        .unwrap()
+        .insert(keys::OPTION_ENABLE_CHECK_UPDATE.to_owned(), "N".to_owned());
+    config::OVERWRITE_SETTINGS
+        .write()
+        .unwrap()
+        .insert(keys::OPTION_ALLOW_AUTO_UPDATE.to_owned(), "N".to_owned());
+}
+
 pub fn load_custom_client() {
+    load_custom_client_();
+    apply_local_only_settings();
+}
+
+fn load_custom_client_() {
     #[cfg(debug_assertions)]
     if let Ok(data) = std::fs::read_to_string("./custom.txt") {
         read_custom_client(data.trim());

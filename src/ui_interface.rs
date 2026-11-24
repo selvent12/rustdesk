@@ -1445,9 +1445,10 @@ async fn check_connect_status_(reconnect: bool, rx: mpsc::UnboundedReceiver<ipc:
                                 video_conn_count = n;
                             }
                             Ok(Some(ipc::Data::OnlineStatus(Some((mut x, _c))))) => {
-                                if x > 0 {
-                                    x = 1
-                                }
+                                // Local-only build: there is no rendezvous server to be online
+                                // with; a reachable service means the direct-IP server is ready.
+                                let _ = x;
+                                x = 1;
                                 #[cfg(not(feature = "flutter"))]
                                 {
                                     key_confirmed = _c;

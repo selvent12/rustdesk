@@ -54,6 +54,7 @@ fn initialize(app_dir: &str, custom_client_config: &str) {
         crate::load_custom_client();
     } else {
         crate::read_custom_client(custom_client_config);
+        crate::common::apply_local_only_settings();
     }
     #[cfg(target_os = "android")]
     {
