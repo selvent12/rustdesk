@@ -164,11 +164,12 @@ fn setup(
     let dir = if let Some(dir) = dir {
         dir
     } else {
-        // home dir
-        if let Some(dir) = dirs::data_local_dir() {
-            dir.join(app_dir_name(&reader.exe))
+        // Local-only build: extract next to this exe (.\data\app), never into %LocalAppData%.
+        if let Some(dir) = local_only_data_dir() {
+            let _ = app_dir_name(&reader.exe);
+            dir.join("app")
         } else {
-            eprintln!("not found data local dir");
+            eprintln!("cannot determine the folder of this exe");
             return None;
         }
     };
@@ -193,6 +194,16 @@ fn setup(
     #[cfg(linux)]
     reader.configure_permission(&dir);
     Some(dir.join(&reader.exe))
+}
+
+/// Local-only build: the environment variable that tells the app where its data folder is
+/// (config, keys, logs). Keep in sync with `LOCAL_ONLY_DATA_DIR_ENV` in hbb_common config.rs.
+const LOCAL_ONLY_DATA_DIR_ENV: &str = "LOCAL_ONLY_DATA_DIR";
+
+/// Local-only build: `<folder of this exe>\data`.
+fn local_only_data_dir() -> Option<PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    Some(exe.parent()?.join("data"))
 }
 
 fn use_null_stdio() -> bool {
@@ -247,6 +258,9 @@ fn execute(path: PathBuf, args: Vec<String>, _ui: bool) {
     }
 
     cmd.env(APPNAME_RUNTIME_ENV_KEY, exe_name);
+    if let Some(dir) = local_only_data_dir() {
+        cmd.env(LOCAL_ONLY_DATA_DIR_ENV, dir);
+    }
     if use_null_stdio() {
         cmd.stdin(Stdio::null())
             .stdout(Stdio::null())
